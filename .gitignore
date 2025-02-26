@@ -1,0 +1,11 @@
+__pycache__/
+seqCGAN/__pycache__
+bins/
+bins_old/
+data/
+save_*/
+wordvec/
+cuda*
+*.txt
+*.log
+*.json
