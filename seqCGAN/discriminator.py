@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class Discriminator(nn.Module):
-    def __init__(self, label_dim, seq_dim, max_seq_len, x_list, device):
+    def __init__(self, label_dim, seq_dim, max_seq_len, x_list, word_vec_dict, device):
         super(Discriminator, self).__init__()
         
         self.seq_dim = seq_dim
@@ -11,6 +11,10 @@ class Discriminator(nn.Module):
         self.label_dim = label_dim
         self.max_seq_len = max_seq_len
         self.x_list = x_list
+        # self.word_vec_dict = word_vec_dict
+        
+        self.word_vec_list = [wv_tensor.to(device) for wv_tensor in word_vec_dict.values()]
+        
         self.device = device
         
         # self.emb = nn.ModuleList([
@@ -49,7 +53,7 @@ class Discriminator(nn.Module):
         length_out = self.length_fc(length_one_hot)
         
         seq = seq.float()
-        seq = torch.stack([seq[:,:,i]/x_len for i, x_len in enumerate(self.x_list)], dim=2)
+        # seq = torch.stack([seq[:,:,i]/x_len for i, x_len in enumerate(self.x_list)], dim=2)
         
         # seq_emb = torch.cat([self.emb[i](seq[:,:,i]) for i in range(len(self.x_list))], dim=2)
         
@@ -85,3 +89,13 @@ class Discriminator(nn.Module):
         # prob = self.softmax(validity)
         # return prob
         return validity
+    
+    def seq2wv(self, seq):
+        seq_res = []
+        for i in range(len(self.word_vec_list)):
+            seq_one_hot = F.one_hot(seq[:,:,i].clone().detach().long(), num_classes=self.word_vec_list[i].shape[0]).float().to(self.device)
+            seq_wv = torch.bmm(seq_one_hot,self.word_vec_list[i].unsqueeze(0).expand(seq_one_hot.size(0),-1,-1))
+            seq_res.append(seq_wv)
+        seq_res = torch.cat(seq_res, dim=2)
+        # print(seq_res.shape)
+        return seq_res

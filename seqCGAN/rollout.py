@@ -28,7 +28,9 @@ class Rollout(object):
                 samples = self.own_model.sample(batch_size, label, length, data)
                 # pred = discriminator(label, samples, length) # (batch_size)
                 # pred_slice = pred[:,1].clone().view(-1)
-                pred = discriminator(label, samples, length)
+                samples_wv = discriminator.seq2wv(samples)
+                pred = discriminator.forward(label, samples_wv, length)
+                # pred = discriminator(label, samples, length)
                 pred_slice = pred.clone().view(-1)
                 
                 if i == 0:
@@ -39,7 +41,8 @@ class Rollout(object):
             # for the last token
             # pred = discriminator(label, x, length)
             # pred_slice = pred.clone()[:,1].view(-1)
-            pred = discriminator(label, samples, length)
+            samples_wv = discriminator.seq2wv(x)
+            pred = discriminator.forward(label, samples_wv, length)
             pred_slice = pred.clone().view(-1)
             if i == 0:
                 rewards.append(pred_slice)

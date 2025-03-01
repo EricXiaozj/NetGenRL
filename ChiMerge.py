@@ -236,9 +236,10 @@ def cal_bins(data_dic, min_unit, min_value, max_value):
 
     merged_intervals,merged_data = chi_merge(new_intervals,new_data,chi_threshold=critical_value)
     
-    filled_intervals,filled_data = fill_intervals(merged_intervals,merged_data,min_unit,min_value,max_value)
+    # filled_intervals,filled_data = fill_intervals(merged_intervals,merged_data,min_unit,min_value,max_value)
 
-    return filled_intervals,filled_data
+    # return filled_intervals,filled_data
+    return merged_intervals,merged_data
 
 # %%
 if __name__ == '__main__':
