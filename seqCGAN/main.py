@@ -12,7 +12,7 @@ from dataset import CustomDataset
 from util import *
 from rollout import Rollout
 from GANloss import GANLoss
-
+import time
 
 # def seq_to_wordvec(seqs, wv):
 #     seqs = seqs.cpu().numpy()
@@ -133,7 +133,7 @@ def pre_train(generator, discriminator, dataloader, generator_epoch, discirminat
     # dis_optimizer = optim.RMSprop(discriminator.parameters(), lr=0.00005)
     # dis_optimizer = optim.Adam(discriminator.parameters(),lr=0.0002, betas=(0.5, 0.999))
     dis_optimizer = optim.RMSprop(discriminator.parameters(), lr=0.0001)
-    dis_criterion = nn.NLLLoss(reduction='sum')
+    # dis_criterion = nn.NLLLoss(reduction='sum')
 
     for epoch in range(discirminator_epoch):
         for i, (seqs, labels, lengths, weights) in enumerate(dataloader):
@@ -187,8 +187,8 @@ def pre_train(generator, discriminator, dataloader, generator_epoch, discirminat
 # %%
 def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01, alpha = 1.0):
     # 使用Wasserstein GAN损失
-    optimizer_g = optim.RMSprop(generator.parameters(), lr=0.0001)
-    optimizer_d = optim.RMSprop(discriminator.parameters(), lr=0.0001)
+    optimizer_g = optim.RMSprop(generator.parameters(), lr=0.00005)
+    optimizer_d = optim.RMSprop(discriminator.parameters(), lr=0.00005)
     
     # optimizer_g = optim.Adam(generator.parameters(),lr=0.0002, betas=(0.5, 0.999))
     # optimizer_d = optim.Adam(discriminator.parameters(),lr=0.0002, betas=(0.5, 0.999))
@@ -205,27 +205,47 @@ def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01,
             weights = weights.unsqueeze(-1).to(device)
             # lengths = lengths.to(device)
             # metadatas = metadatas.to(device)
+            
+            sample_time = 0
+            reward_time = 0
+            g_forward_time = 0
+            l_forward_time = 0
+            d_forward_time = 0
+            grad_time = 0
+            other_time = 0
 
             # 创建标签
             # valid = torch.ones(batch_size, 1).to(device)   # 真实数据+对应标签 -> 1
             # fake = torch.zeros(batch_size, 1).to(device)   # 生成数据+标签 -> 0
             
+            start_time = time.perf_counter()
             samples = generator.sample(batch_size, labels, lengths) # (batch_size, seq_len, seq_dim)
             zeros = torch.zeros((batch_size, 1, seq_dim)).type(torch.LongTensor).to(device)
             inputs = torch.cat([zeros, samples], dim=1)[:,:-1,:].contiguous()
             targets = samples.contiguous().view(-1,seq_dim)
+            sample_time += time.perf_counter() - start_time
             
+            start_time = time.perf_counter()
             rewards = rollout.get_reward(samples, N_ROLL, discriminator, labels, lengths)
             # rewards_exp = torch.exp(rewards.clone()).contiguous().view((-1,)).to(device)
             rewards_exp = rewards.clone().contiguous().view((-1,)).to(device)
+            reward_time += time.perf_counter() - start_time
             
+            start_time = time.perf_counter()
             prob = generator.forward(labels, lengths, inputs) # (batch_size, seq_len, prob_dim)
+            g_forward_time += time.perf_counter() - start_time
+            
+            start_time = time.perf_counter()
             g_loss = gan_loss.forward(prob, targets, rewards_exp, device, weights)
+            l_forward_time += time.perf_counter() - start_time
             # print(g_loss)
+            
+            start_time = time.perf_counter()
             optimizer_g.zero_grad()
             g_loss.backward()
             optimizer_g.step()
             rollout.update_params()
+            other_time += time.perf_counter() - start_time
 
             # 训练判别器
             # optimizer_md.zero_grad()
@@ -233,13 +253,17 @@ def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01,
                 optimizer_d.zero_grad()
                 # real_validity = discriminator(labels, seqs, lengths)
                 #noise = torch.randn(batch_size, generator.noise_dim).to(device)
+                start_time = time.perf_counter()
                 fake_seqs = generator.sample(batch_size, labels, lengths)
+                sample_time += time.perf_counter() - start_time
                 
+                start_time = time.perf_counter()
                 fake_seqs_wv = discriminator.seq2wv(fake_seqs.detach()).to(device)
                 real_seqs_wv = discriminator.seq2wv(seqs).to(device)
                 # print(fake_seqs.shape)
                 fake_validity = discriminator.forward(labels, fake_seqs_wv, lengths)
                 real_validity = discriminator.forward(labels, real_seqs_wv, lengths)
+                d_forward_time += time.perf_counter() - start_time
                 # fake_validity = discriminator(labels, fake_seqs.detach(),lengths)
                 
                 
@@ -263,14 +287,21 @@ def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01,
             
                 # dis_optimizer.zero_grad()
                 
+                start_time = time.perf_counter()
                 with torch.backends.cudnn.flags(enabled=False):
                     # gp = compute_gradient_penalty(discriminator, seqs, fake_seqs.detach(),labels, lengths,device)
                     gp = compute_gradient_penalty(discriminator, real_seqs_wv, fake_seqs_wv,labels, lengths,device)
+                grad_time += time.perf_counter() - start_time
+                
+                start_time = time.perf_counter()
                 total_d_loss = d_loss + gp
                 total_d_loss.backward()
                 
                 # d_loss.backward()
                 optimizer_d.step()
+                other_time += time.perf_counter() - start_time
+                
+            # print("sample_time: ", sample_time, "reward_time: ", reward_time, "g_forward_time: ", g_forward_time, "l_forward_time: ", l_forward_time, "d_forward_time: ", d_forward_time, "grad_time: ", grad_time, "other_time: ", other_time)
                 
 
         # 每个epoch结束时保存模型
@@ -280,9 +311,9 @@ def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01,
         torch.save(generator.state_dict(), '../save_seq/generator.pth')
         torch.save(discriminator.state_dict(), '../save_seq/discriminator.pth')
 
-        if (epoch + 1) % 20 == 0:
-            torch.save(generator.state_dict(), f'../save_seq/generator_{epoch+1 + 180}.pth')
-            torch.save(discriminator.state_dict(), f'../save_seq/discriminator_{epoch+1 + 180}.pth')
+        if (epoch + 1) % 50 == 0:
+            torch.save(generator.state_dict(), f'../save_seq/generator_{epoch+1 + 600}.pth')
+            torch.save(discriminator.state_dict(), f'../save_seq/discriminator_{epoch+1 + 600}.pth')
             
         torch.cuda.empty_cache()
 
@@ -304,7 +335,7 @@ if __name__ == '__main__':
     # metadata_dim = 2  # 元数据维度为2
     noise_dim = 100  # 噪声维度
     batch_size = 64
-    epochs = 400
+    epochs = 500
     seq_dim = SEQ_DIM
     max_seq_len = MAX_SEQ_LEN
     # x_list = [MAX_TIME, MAX_PKT_LEN]
