@@ -312,8 +312,8 @@ def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01,
         torch.save(discriminator.state_dict(), '../save_seq/discriminator.pth')
 
         if (epoch + 1) % 50 == 0:
-            torch.save(generator.state_dict(), f'../save_seq/generator_{epoch+1 + 600}.pth')
-            torch.save(discriminator.state_dict(), f'../save_seq/discriminator_{epoch+1 + 600}.pth')
+            torch.save(generator.state_dict(), f'../save_seq/generator_{epoch+1 + 1100}.pth')
+            torch.save(discriminator.state_dict(), f'../save_seq/discriminator_{epoch+1 + 1100}.pth')
             
         torch.cuda.empty_cache()
 
@@ -335,7 +335,7 @@ if __name__ == '__main__':
     # metadata_dim = 2  # 元数据维度为2
     noise_dim = 100  # 噪声维度
     batch_size = 64
-    epochs = 500
+    epochs = 400
     seq_dim = SEQ_DIM
     max_seq_len = MAX_SEQ_LEN
     # x_list = [MAX_TIME, MAX_PKT_LEN]
