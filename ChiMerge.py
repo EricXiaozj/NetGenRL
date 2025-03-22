@@ -48,7 +48,7 @@ def chi_cal(interval_l,interval_r,num_ls,num_rs):
     length = right_board - left_board + 1
     ps = totals/length
     # print(left_len,right_len,ps)
-    chi_2 = empty_len * ps + np.where(ps != 0, ((num_ls / left_len - ps) ** 2 / ps + (num_rs / right_len - ps) ** 2 / ps), 0)
+    chi_2 = empty_len * ps + np.where(ps != 0, ((num_ls / left_len - ps) ** 2 / ps * left_len + (num_rs / right_len - ps) ** 2 / ps * right_len), 0)
     return np.sum(chi_2)
 
 # %%
@@ -243,7 +243,7 @@ def cal_bins(data_dic, min_unit, min_value, max_value):
 
 # %%
 if __name__ == '__main__':
-    with open('./data/vpn_data_small.json', 'r') as f:
+    with open('./data/vpn_data_mid.json', 'r') as f:
         json_data = json.load(f)['data']
 
     data_dic = construct_data_dic(json_data)
@@ -261,6 +261,8 @@ if __name__ == '__main__':
         merged_intervals,merged_data = cal_bins(data_dic[label],params_dic[label]['min_unit'],params_dic[label]['min_value'],params_dic[label]['max_value'])
         print(label,':')
         print(len(merged_intervals))
+        for i in range(len(merged_intervals)):
+            merged_intervals[i] = [round(merged_intervals[i][0],2),round(merged_intervals[i][1],2)]
         print(merged_intervals)
         print(merged_data.astype(int))
         print()
@@ -278,6 +280,8 @@ if __name__ == '__main__':
         #     result_dic[label].append({'intervals':merged_intervals,'data':merged_data.tolist()})
     
     json_str = json.dumps(result_dic)
-    with open('./bins/bins_small.json', 'w') as file:
+    with open('./bins/bins_mid.json', 'w') as file:
         file.write(json_str)
+    # with open("./bins/bins_small_new.json", "w") as f:
+    #     json.dump(result_dic, f, ensure_ascii=False, indent=2)
     

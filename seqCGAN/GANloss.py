@@ -41,7 +41,7 @@ class GANLoss(nn.Module):
         #     one_hot = one_hot.cuda()
         # print(loss)
         
-        loss = loss * reward 
+        loss = loss * reward * weights
         # print(loss)
         # print(loss.shape)
         loss = -torch.mean(loss)

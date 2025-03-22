@@ -113,7 +113,7 @@ def pre_train(generator, discriminator, dataloader, generator_epoch, discirminat
                 # print(fake_preds[:,:,count:count+x_len].shape, target[:,:,j].shape)
                 loss = F.nll_loss(fake_preds[:,:,count:count+x_len].view(-1,x_len), target[:,:,j].view(-1),reduction='none')
                 loss = loss.view(batch_size, seq_len)  # 恢复为 (batch_size, seq_len)
-                loss = loss * mask
+                loss = loss * mask * weights
                 g_loss += loss.sum()
                 count += x_len
                 
@@ -151,8 +151,8 @@ def pre_train(generator, discriminator, dataloader, generator_epoch, discirminat
             fake_seqs_wv = discriminator.seq2wv(fake_seqs.detach()).to(device)
             real_seqs_wv = discriminator.seq2wv(seqs).to(device)
             # print(fake_seqs.shape)
-            fake_validity = discriminator.forward(labels, fake_seqs_wv, lengths)
-            real_validity = discriminator.forward(labels, real_seqs_wv, lengths)
+            fake_validity = discriminator.forward(labels, fake_seqs_wv, lengths) * weights
+            real_validity = discriminator.forward(labels, real_seqs_wv, lengths) * weights
             
             # real_loss = F.binary_cross_entropy_with_logits(real_validity, torch.ones_like(real_validity))  # 真实数据目标是 1
             # fake_loss = F.binary_cross_entropy_with_logits(fake_validity, torch.zeros_like(fake_validity)) 
@@ -261,8 +261,8 @@ def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01,
                 fake_seqs_wv = discriminator.seq2wv(fake_seqs.detach()).to(device)
                 real_seqs_wv = discriminator.seq2wv(seqs).to(device)
                 # print(fake_seqs.shape)
-                fake_validity = discriminator.forward(labels, fake_seqs_wv, lengths)
-                real_validity = discriminator.forward(labels, real_seqs_wv, lengths)
+                fake_validity = discriminator.forward(labels, fake_seqs_wv, lengths) * weights
+                real_validity = discriminator.forward(labels, real_seqs_wv, lengths) * weights
                 d_forward_time += time.perf_counter() - start_time
                 # fake_validity = discriminator(labels, fake_seqs.detach(),lengths)
                 
@@ -311,9 +311,9 @@ def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01,
         torch.save(generator.state_dict(), '../save_seq/generator.pth')
         torch.save(discriminator.state_dict(), '../save_seq/discriminator.pth')
 
-        if (epoch + 1) % 50 == 0:
-            torch.save(generator.state_dict(), f'../save_seq/generator_{epoch+1 + 1100}.pth')
-            torch.save(discriminator.state_dict(), f'../save_seq/discriminator_{epoch+1 + 1100}.pth')
+        if (epoch + 1) % 100 == 0:
+            torch.save(generator.state_dict(), f'../save_seq/generator_{epoch+1}.pth')
+            torch.save(discriminator.state_dict(), f'../save_seq/discriminator_{epoch+1}.pth')
             
         torch.cuda.empty_cache()
 
@@ -335,7 +335,7 @@ if __name__ == '__main__':
     # metadata_dim = 2  # 元数据维度为2
     noise_dim = 100  # 噪声维度
     batch_size = 64
-    epochs = 400
+    epochs = 1500
     seq_dim = SEQ_DIM
     max_seq_len = MAX_SEQ_LEN
     # x_list = [MAX_TIME, MAX_PKT_LEN]
@@ -377,18 +377,18 @@ if __name__ == '__main__':
 
     print("Process dataset...")
 
-    dataset = CustomDataset(json_file='../data/vpn_data_small.json', bins_file='../bins/bins_small.json', class_mapping=LABEL_DICT,max_seq_len=max_seq_len)
+    dataset = CustomDataset(json_file='../data/vpn_data_small.json', bins_file='../bins/bins_small_new.json', class_mapping=LABEL_DICT,max_seq_len=max_seq_len)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 
-    checkpoint_g = torch.load('../save_seq/generator.pth')  # 加载保存的权重字典
-    generator.load_state_dict(checkpoint_g) 
+    # checkpoint_g = torch.load('../save_seq/generator.pth')  # 加载保存的权重字典
+    # generator.load_state_dict(checkpoint_g) 
 
-    checkpoint_d = torch.load('../save_seq/discriminator.pth')  # 加载保存的权重字典
-    discriminator.load_state_dict(checkpoint_d) 
+    # checkpoint_d = torch.load('../save_seq/discriminator.pth')  # 加载保存的权重字典
+    # discriminator.load_state_dict(checkpoint_d) 
     
-    # print("Pre-training...")
-    # pre_train(generator, discriminator, dataloader, 50, 5, device)
+    print("Pre-training...")
+    pre_train(generator, discriminator, dataloader, 50, 5, device)
 
     print("Trainning...")
     train(generator, discriminator, dataloader, epochs, device)
