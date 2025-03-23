@@ -16,6 +16,11 @@ class Generator(nn.Module):
         self.pred_dim = sum(x_list)
         self.x_list = x_list # list of seq value dim
         self.device = device
+        self.count_list = []
+        count = 0
+        for x_len in x_list:
+            count += x_len
+            self.count_list.append(count)
                 
         self.emb = nn.ModuleList([
             nn.Embedding(x_len, 128) for x_len in x_list
@@ -25,6 +30,13 @@ class Generator(nn.Module):
         #     nn.Linear(label_dim, 64),
         #     nn.ReLU(True),
         # )
+        
+        self.condition_fix = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(c_len, 64),
+                nn.ReLU(True),
+            ) for c_len in self.count_list
+        ])
         
         self.length_fc = nn.Sequential(
             nn.Linear(max_seq_len, 64),
