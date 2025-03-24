@@ -198,6 +198,7 @@ def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01,
     dis_criterion = nn.NLLLoss(reduction='sum')
 
     for epoch in range(epochs):
+        torch.cuda.empty_cache()
         for i, (seqs, labels, lengths, weights) in enumerate(dataloader):
             batch_size = seqs.size(0)
             seqs = seqs.to(device)

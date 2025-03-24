@@ -46,6 +46,7 @@ class Discriminator(nn.Module):
         # self.softmax = nn.LogSoftmax(dim=1)
         
     def forward(self, label, seq, length):
+        self.lstm.flatten_parameters()
         
         length_one_hot = F.one_hot((length.clone().detach().long() - 1), num_classes=self.max_seq_len).float().to(self.device)
         
