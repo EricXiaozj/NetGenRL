@@ -102,7 +102,7 @@ def pre_train(generator, discriminator, dataloader, generator_epoch, discirminat
             
             seqs_seed = torch.cat([zero, seqs[:,:-1,:]], dim=1) # (batch_size, seq_len, seq_dim)
             
-            fake_preds = generator.forward(labels, lengths,seqs_seed) # (batch_size, seq_len, prob_dim)
+            fake_preds = generator.forward(labels, lengths, seqs_seed, seqs) # (batch_size, seq_len, prob_dim)
             
             target = torch.cat([seqs[:,:-1,:], zero], dim=1) # (batch_size, seq_len, seq_dim)
             
@@ -232,7 +232,7 @@ def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01,
             reward_time += time.perf_counter() - start_time
             
             start_time = time.perf_counter()
-            prob = generator.forward(labels, lengths, inputs) # (batch_size, seq_len, prob_dim)
+            prob = generator.forward(labels, lengths, inputs, samples) # (batch_size, seq_len, prob_dim)
             g_forward_time += time.perf_counter() - start_time
             
             start_time = time.perf_counter()
@@ -311,7 +311,7 @@ def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01,
         torch.save(generator.state_dict(), '../save_seq/generator.pth')
         torch.save(discriminator.state_dict(), '../save_seq/discriminator.pth')
 
-        if (epoch + 1) % 100 == 0:
+        if (epoch + 1) % 50 == 0:
             torch.save(generator.state_dict(), f'../save_seq/generator_{epoch+1}.pth')
             torch.save(discriminator.state_dict(), f'../save_seq/discriminator_{epoch+1}.pth')
             
