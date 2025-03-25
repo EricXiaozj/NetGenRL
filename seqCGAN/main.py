@@ -104,7 +104,8 @@ def pre_train(generator, discriminator, dataloader, generator_epoch, discirminat
             
             fake_preds = generator.forward(labels, lengths, seqs_seed, seqs) # (batch_size, seq_len, prob_dim)
             
-            target = torch.cat([seqs[:,:-1,:], zero], dim=1) # (batch_size, seq_len, seq_dim)
+            # target = torch.cat([seqs[:,:-1,:], zero], dim=1) # (batch_size, seq_len, seq_dim)
+            target = seqs # (batch_size, seq_len, seq_dim)
             
             count = 0
             
