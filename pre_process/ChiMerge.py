@@ -3,8 +3,8 @@ import numpy as np
 import struct
 import json
 import scipy.stats as stats
+import os
 
-## TODO: 改为不关注序列顺序，所有序列位置的区间一致，以配合word2vec
 
 # %%
 def threshold_merge(intervals, data, min_unit, threshold = 1):
@@ -110,72 +110,30 @@ def interval_allocate(intervals,data):
     pass
 
 # %%
-def construct_data_dic(json_data):
-    TOTAL_LEN = 114
-    data_dic = {}
-    data_dic = {'bytes':{},'packets':{},'port':{},'packet_len':{},'time':{}}
-    # for _ in range(0,16):
-    #     data_dic['packet_len'].append({})
-    #     data_dic['time'].append({})
-    
-    for item in json_data:
-        label_str = item['labels'][0]
-        if label_str not in data_dic['bytes']:
-            data_dic['bytes'][label_str] = {}
-            data_dic['packets'][label_str] = {}
-            data_dic['port'][label_str] = {}
-            # for i in range(0,16):
-            #     data_dic['packet_len'][i][label_str] = {}
-            #     data_dic['time'][i][label_str] = {}
-            data_dic['packet_len'][label_str] = {}
-            data_dic['time'][label_str] = {}
-            # data_dic[label_str] = {'bytes':{},'packets':{},'port':{},'packet_len':[],'time':[]}
-            # for _ in range(0,16):
-            #     data_dic[label_str]['packet_len'].append({})
-            #     data_dic[label_str]['time'].append({})
-        bytes_len = item['meta']['bytes']/10
-        packets_len = item['meta']['packets']
-        im = bytes.fromhex(item['nprint'])
+def construct_data_dic(json_data_dic, attribute_list, port_attr_list, ip_attr_list, series_attr_list, max_seq_len):
+    data_dic = {attribute: {} for attribute in attribute_list}
 
-        # if packets_len != 2:
-        #     continue
-
-        if bytes_len not in data_dic['bytes'][label_str]:
-            data_dic['bytes'][label_str][bytes_len] = 0
-        data_dic['bytes'][label_str][bytes_len] += 1
-        if packets_len not in data_dic['packets'][label_str]:
-            data_dic['packets'][label_str][packets_len] = 0
-        data_dic['packets'][label_str][packets_len] += 1
-
-        for i in range(min(16,packets_len)):
-            line = im[i*TOTAL_LEN:i*TOTAL_LEN+TOTAL_LEN]
-            time_h, time_l, pl = struct.unpack("IIh", line[:10])
-            time_l //= 1e4
-            time = time_h + time_l*0.01
-            # time >>= 32
-            # time = float(time)/float(1 << 32)
-            # if pl not in data_dic['packet_len'][i][label_str]:
-            #     data_dic['packet_len'][i][label_str][pl] = 0
-            # data_dic['packet_len'][i][label_str][pl] += 1
-            # if time not in data_dic['time'][i][label_str]:
-            #     data_dic['time'][i][label_str][time] = 0
-            # data_dic['time'][i][label_str][time] += 1
-            if pl not in data_dic['packet_len'][label_str]:
-                data_dic['packet_len'][label_str][pl] = 0
-            data_dic['packet_len'][label_str][pl] += 1
-            if time not in data_dic['time'][label_str]:
-                data_dic['time'][label_str][time] = 0
-            data_dic['time'][label_str][time] += 1
-
-        line = im[0:TOTAL_LEN]
-        tcp_dport = line[32:34]
-        udp_dport = line[92:94]
-
-        dport = bytearray(a | b for a, b in zip(tcp_dport, udp_dport))
-        dport = int.from_bytes(dport, 'big')
-        if dport not in data_dic['port'][label_str]:
-            data_dic['port'][label_str][dport] = 0
-        data_dic['port'][label_str][dport] += 1
+    for label, json_data in json_data_dic.items():
+        for attribute in attribute_list:
+            data_dic[attribute][label] = {}
+        for item in json_data:
+            for ip_attr in ip_attr_list:
+                if item[ip_attr] not in data_dic[ip_attr][label]:
+                    data_dic[ip_attr][label][item[ip_attr]] = 0
+                data_dic[ip_attr][label][item[ip_attr]] += 1
+            for port_attr in port_attr_list:
+                if item[port_attr] not in data_dic[port_attr][label]:
+                    data_dic[port_attr][label][item[port_attr]] = 0
+                data_dic[port_attr][label][item[port_attr]] += 1
+            
+            for i,pkt in enumerate(item['series']):
+                if i >= max_seq_len:
+                    break
+                for sery_attr in series_attr_list:
+                    if pkt[sery_attr] not in data_dic[sery_attr][label]:
+                        data_dic[sery_attr][label][pkt[sery_attr]] = 0
+                    data_dic[sery_attr][label][pkt[sery_attr]] += 1
+                    
 
     return data_dic
     
@@ -243,21 +201,43 @@ def cal_bins(data_dic, min_unit, min_value, max_value):
 
 # %%
 if __name__ == '__main__':
-    with open('./data/vpn_data_mid.json', 'r') as f:
-        json_data = json.load(f)['data']
+    
+    fold_name = 'iscx'
+    # data_dic = {}
+    json_data_dic = {}
+    for filename in os.listdir('../data/'+fold_name):
+        with open('../data/'+fold_name +'/'+filename, 'r') as f:
+            json_data = json.load(f)
+            json_data_dic[filename.split('.')[0]] = json_data
 
-    data_dic = construct_data_dic(json_data)
+    IP_ATTRIBUTE_LIST = ['src_ip','dst_ip']
+    PORT_ATTRIBUTE_LIST = ['src_port','dst_port']
+    SERY_ATTRIBUTE_LIST = ['time','pkt_len','flags','ttl']
+    ATTRIBUTE_LIST = SERY_ATTRIBUTE_LIST + PORT_ATTRIBUTE_LIST + IP_ATTRIBUTE_LIST
+    MAX_SEQ_LEN = 16
+
+    data_dic = construct_data_dic(json_data_dic, ATTRIBUTE_LIST, PORT_ATTRIBUTE_LIST, IP_ATTRIBUTE_LIST, SERY_ATTRIBUTE_LIST, MAX_SEQ_LEN)
 
     np.set_printoptions(linewidth=2000)
     
     result_dic = {}
-    params_dic = {'bytes':{'min_unit':0.1,'min_value':0,'max_value':0},
-                  'packets':{'min_unit':1,'min_value':1,'max_value':0},
-                  'port':{'min_unit':1,'min_value':0,'max_value':65535},
-                  'packet_len':{'min_unit':1,'min_value':-1500,'max_value':1500},
-                  'time':{'min_unit':0.01,'min_value':0,'max_value':0}}
+    # params_dic = {'bytes':{'min_unit':0.1,'min_value':0,'max_value':0},
+    #               'packets':{'min_unit':1,'min_value':1,'max_value':0},
+    #               'port':{'min_unit':1,'min_value':0,'max_value':65535},
+    #               'packet_len':{'min_unit':1,'min_value':-1500,'max_value':1500},
+    #               'time':{'min_unit':0.01,'min_value':0,'max_value':0}}
+    
+    params_dic = {'time':{'min_unit':0.01,'min_value':0,'max_value':10000},
+                  'pkt_len':{'min_unit':1,'min_value':-1500,'max_value':1500},
+                  'flags':{'min_unit':1,'min_value':0,'max_value':255},
+                  'ttl':{'min_unit':1,'min_value':0,'max_value':255},
+                  'src_port':{'min_unit':1,'min_value':0,'max_value':65535},
+                  'dst_port':{'min_unit':1,'min_value':0,'max_value':65535},
+                  'src_ip':{'min_unit':1,'min_value':0,'max_value':4294967295},
+                  'dst_ip':{'min_unit':1,'min_value':0,'max_value':4294967295}}
+                  
 
-    for label in ['bytes','packets','port', 'packet_len', 'time']:
+    for label in params_dic.keys():
         merged_intervals,merged_data = cal_bins(data_dic[label],params_dic[label]['min_unit'],params_dic[label]['min_value'],params_dic[label]['max_value'])
         print(label,':')
         print(len(merged_intervals))
@@ -267,21 +247,9 @@ if __name__ == '__main__':
         print(merged_data.astype(int))
         print()
         result_dic[label] = {'intervals':merged_intervals,'data':merged_data.tolist()}
-
-    # for label in ['packet_len','time']:
-    #     result_dic[label] = []
-        # for i in range(0,16):
-        #     merged_intervals,merged_data = cal_bins(data_dic[label][i])
-        #     print(label,i,':')
-        #     print(len(merged_intervals))
-        #     print(merged_intervals)
-        #     print(merged_data.astype(int))
-        #     print()
-        #     result_dic[label].append({'intervals':merged_intervals,'data':merged_data.tolist()})
     
     json_str = json.dumps(result_dic)
-    with open('./bins/bins_mid.json', 'w') as file:
+    with open('../bins/bins_' + fold_name + '.json', 'w') as file:
         file.write(json_str)
-    # with open("./bins/bins_small_new.json", "w") as f:
-    #     json.dump(result_dic, f, ensure_ascii=False, indent=2)
+
     
