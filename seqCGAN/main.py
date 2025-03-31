@@ -335,16 +335,20 @@ if __name__ == '__main__':
     label_dim = len(LABEL_DICT) 
     # image_dim = (1, NPRINT_REAL_WIDTH, NPRINT_REAL_WIDTH)  # 生成单通道图像
     # metadata_dim = 2  # 元数据维度为2
-    noise_dim = 100  # 噪声维度
+    # noise_dim = 100  # 噪声维度
     batch_size = 64
     epochs = 1500
     seq_dim = SEQ_DIM
     max_seq_len = MAX_SEQ_LEN
     # x_list = [MAX_TIME, MAX_PKT_LEN]
     
+    data_folder = '../data/' + DATASET + '/'
+    bins_file_name = '../bins/bins_' + DATASET + '.json'
+    wordvec_file_name = '../wordvec/word_vec_' + DATASET + '.json'
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    with open('../wordvec/word_vec_small.json', 'r') as f:
+    with open(wordvec_file_name, 'r') as f:
         wv_dict = json.load(f)
     
     wv = {}
@@ -353,6 +357,7 @@ if __name__ == '__main__':
 
     # print(len(wv['time'].wv.key_to_index),len(wv['pkt_len'].wv.key_to_index))
     x_list = [wv_tensor.size(0) for wv_tensor in wv.values()]
+    print(x_list)
    
 
     # 创建生成器、判别器和cGAN
@@ -367,7 +372,7 @@ if __name__ == '__main__':
     
     # cg = ConditionalGAN(label_dim,noise_dim,seq_dim,max_seq_len,device)
     generator = Generator(label_dim,seq_dim,max_seq_len,x_list,device)
-    discriminator = Discriminator(label_dim,WORD_VEC_SIZE * seq_dim,max_seq_len,x_list,wv,device)
+    discriminator = Discriminator(label_dim,WORD_VEC_SIZE * len(SERY_LIST) + META_VEC_SIZE * len(META_LIST) ,max_seq_len,x_list,wv,device)
     
     generator.to(device)
     discriminator.to(device)
@@ -379,7 +384,7 @@ if __name__ == '__main__':
 
     print("Process dataset...")
 
-    dataset = CustomDataset(json_file='../data/vpn_data_small.json', bins_file='../bins/bins_small_new.json', class_mapping=LABEL_DICT,max_seq_len=max_seq_len)
+    dataset = CustomDataset(data_folder = data_folder, bins_file=bins_file_name, class_mapping=LABEL_DICT,max_seq_len=max_seq_len)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 
@@ -390,7 +395,7 @@ if __name__ == '__main__':
     # discriminator.load_state_dict(checkpoint_d) 
     
     print("Pre-training...")
-    pre_train(generator, discriminator, dataloader, 50, 5, device)
+    pre_train(generator, discriminator, dataloader, 5, 5, device)
 
     print("Trainning...")
     train(generator, discriminator, dataloader, epochs, device)

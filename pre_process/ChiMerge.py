@@ -139,7 +139,7 @@ def construct_data_dic(json_data_dic, attribute_list, port_attr_list, ip_attr_li
     
 
 # %%
-def construct_intervals_data(data_dic):
+def construct_intervals_data(data_dic, min_value, max_value, min_unit):
 
     labels = data_dic.keys()
     dics = list(data_dic.values())
@@ -152,6 +152,8 @@ def construct_intervals_data(data_dic):
     id = 0
     for value in dics:
         for k, v in value.items():
+            k = min(max(k,min_value),max_value)
+            k = round(k / min_unit) * min_unit
             if k not in tmp_dict:
                 tmp_dict[k] = [0 for _ in range(len(labels))]
             tmp_dict[k][id] = v
@@ -183,7 +185,7 @@ def fill_intervals(intervals, data, min_unit, min_value, max_value):
 
 def cal_bins(data_dic, min_unit, min_value, max_value):
     
-    intervals, data = construct_intervals_data(data_dic)
+    intervals, data = construct_intervals_data(data_dic, min_value, max_value, min_unit)
     # print(intervals)
     # print(data.astype(int))
     new_intervals,new_data = threshold_merge(intervals,data, min_unit)
