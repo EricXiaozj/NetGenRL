@@ -6,9 +6,10 @@ import struct
 import os
 
 # %%
-data_fold = '../data/iscx/'
-bins_file = '../bins/bins_iscx.json'
-word_vec_json_file = '../wordvec/word_vec_iscx.json'
+dataset = 'iscx'
+data_fold = f'../data/{dataset}/'
+bins_file = f'../bins/bins_{dataset}.json'
+word_vec_json_file = f'../wordvec/word_vec_{dataset}.json'
 IP_ATTRIBUTE_LIST = ['src_ip','dst_ip']
 PORT_ATTRIBUTE_LIST = ['src_port','dst_port']
 SERY_ATTRIBUTE_LIST = ['time','pkt_len','flags','ttl']
