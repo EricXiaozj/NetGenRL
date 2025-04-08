@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
 
 class GANLoss(nn.Module):
     """Reward-Refined NLLLoss Function for adversial training of Gnerator"""
@@ -17,16 +16,11 @@ class GANLoss(nn.Module):
         """
         N = target.size(0)
         C = prob.size(2)
-         # (batch_size, prob_dim)
-        # if prob.is_cuda:
-        #     one_hot = one_hot.cuda()
         
         count = 0
         prob_scatter = prob.clone().view(-1, C)
-        # print(prob_scatter.shape)
         for i,x_len in enumerate(self.x_list):
             one_hot = torch.zeros((N, x_len)).to(device)
-            # print(target.shape)
             one_hot.scatter_(1, target.data[:,i].view((-1,1)), 1)
             one_hot = one_hot.type(torch.BoolTensor).to(device)
             if i == 0:
@@ -36,13 +30,7 @@ class GANLoss(nn.Module):
             count += x_len
             
         loss /= len(self.x_list)
-        # one_hot = Variable(one_hot)
-        # if prob.is_cuda:
-        #     one_hot = one_hot.cuda()
-        # print(loss)
         
         loss = loss * reward * weights
-        # print(loss)
-        # print(loss.shape)
         loss = -torch.mean(loss)
         return loss

@@ -71,7 +71,7 @@ def driver():
                          config['model_paras']['series_word_vec_size'],
                          config['model_paras']['meta_word_vec_size'])
     
-    print("Trainning model ...")
+    print("Training model ...")
     model_train.model_train(label_dict, 
                       config['path']['dataset'], 
                       config['path']['json_folder'],

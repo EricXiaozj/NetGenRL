@@ -1,8 +1,6 @@
 import numpy as np
-from scipy.stats import entropy
 import torch
 from seqCGAN.generator import Generator  # 假设你有一个定义好的 Discriminator 类
-# from seqCGAN.util import *
 import json
 import random
 import math

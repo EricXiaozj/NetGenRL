@@ -1,16 +1,7 @@
 # %%
 from gensim.models import Word2Vec
-import numpy as np
 import json
-import struct
 import os
-
-
-
-# pkt_len_intervals = [bins['intervals'] for bins in bins_data['packet_len']]
-# time_intervals = [bins['intervals'] for bins in bins_data['time']]
-# pkt_len_intervals = bins_data['packet_len']['intervals']
-# time_intervals = bins_data['time']['intervals']
 
 # %%
 def get_seqs_meta(data_fold, ip_attrs, port_attrs, sery_attrs, max_seq_len, bins_data):
@@ -48,7 +39,6 @@ def get_seqs_meta(data_fold, ip_attrs, port_attrs, sery_attrs, max_seq_len, bins
         for item in data:
             meta = []
             for attribute in port_attrs + ip_attrs:
-                # meta.append(item[attribute])
                 meta.append(find_interval(item[attribute], bins_data[attribute]['intervals']))
             meta_list.append(meta)
         
@@ -81,10 +71,8 @@ def run_word_vec(dataset,json_folder,bins_folder,wordvec_folder, ip_attrs, port_
 
     for key, seq in sequences_dic.items():
         model_dic[key] = get_wv_model(seq,series_word_vec_size,5)
-        # model_dic[key].save(f"./{wordvec_folder}/{key}.model")
     
     meta_model = get_meta_model(meta_list,meta_word_vec_size,3)
-    # meta_model.save(f"../{wordvec_folder}/meta.model")
 
     set = {}
     
