@@ -2,43 +2,16 @@ import numpy as np
 from scipy.stats import entropy
 import torch
 from seqCGAN.generator import Generator  # 假设你有一个定义好的 Discriminator 类
-from seqCGAN.util import *
+# from seqCGAN.util import *
 import json
 import random
 import math
-import struct
 from torch.utils.data import DataLoader, Dataset
-import torch.nn.functional as F
-from scipy.stats import wasserstein_distance
-import matplotlib.pyplot as plt
-from gensim.models import Word2Vec
-from dtaidistance import dtw
 import os
 import ot
 
-# label_dict = {'facebook': 0, 'skype': 1, 'email': 2, 'voipbuster': 3, 'youtube': 4, 'ftps': 5, 'vimeo': 6, 'spotify': 7, 'netflix': 8, 'bittorrent': 9}
-label_dict = {'benign_http': 0, 'benign_rtp': 1, 'bruteforce_dns': 2, 'bruteforce_ssh': 3, 'ddos_ack': 4, 'ddos_dns': 5, 'ddos_http': 6, 'ddos_syn': 7, 'scan_bruteforce': 8}
-label_dim = len(label_dict) 
-batch_size = 128
-dataset = 'ssrc_train'
-save_folder = './save_seq4/'
-# source_name = './data/vpn_data_small.json'
-# bins_name = './bins/bins_small_new.json'
-data_folder = './data/' + dataset + '/'
-bins_file_name = './bins/bins_' + dataset + '.json'
-wordvec_file_name = './wordvec/word_vec_' + dataset + '.json'
-
-params_dic = {'time':{'min_unit':0.01,'min_value':0,'max_value':3000},
-                  'pkt_len':{'min_unit':1,'min_value':-1500,'max_value':1500},
-                  'flags':{'min_unit':1,'min_value':0,'max_value':255},
-                  'ttl':{'min_unit':1,'min_value':0,'max_value':255},
-                  'src_port':{'min_unit':1,'min_value':0,'max_value':65535},
-                  'dst_port':{'min_unit':1,'min_value':0,'max_value':65535},
-                  'src_ip':{'min_unit':1,'min_value':0,'max_value':4294967295},
-                  'dst_ip':{'min_unit':1,'min_value':0,'max_value':4294967295}}
   
-def get_real_data(data_folder):
-    
+def get_real_data(data_folder, label_dict, meta_attrs, sery_attrs, bins_data, max_seq_len):
     data_dic = {}
     for filename in os.listdir(data_folder):
         with open(data_folder + filename, 'r') as f:
@@ -48,25 +21,24 @@ def get_real_data(data_folder):
             data_dic[filename.split('.')[0]] = []
             for item in json_data:
                 meta_list = []
-                for meta_attr in META_LIST:
+                for meta_attr in meta_attrs:
                     meta_list.append(item[meta_attr]/bins_data[meta_attr]['intervals'][-1][1])
                 count = 0
                 seq = []
                 for pkt in item['series']:
                     attr_list = []
-                    for sery_attr in SERY_LIST:
+                    for sery_attr in sery_attrs:
                         attr_list.append(pkt[sery_attr]/bins_data[sery_attr]['intervals'][-1][1])
                     seq.append(attr_list + meta_list)
                     # seq.append(attr_list)
                     count += 1
-                    if count >= MAX_SEQ_LEN:
+                    if count >= max_seq_len:
                         break
                 data_dic[filename.split('.')[0]].append(seq)
-        
     return data_dic
 
 class SequenceDataset(Dataset):
-    def __init__(self, datas, label_str):
+    def __init__(self, datas, label_str, label_dict, label_dim):
         """
         :param sequences: 一个包含真实序列的列表，每个序列是一个 ndarray 或 list
         """
@@ -82,9 +54,10 @@ class SequenceDataset(Dataset):
     def __getitem__(self, idx):
         return self.lengths[idx],self.label_one_hot
     
-def get_fake_data(real_data, label_str, generator):
-    dataset = SequenceDataset(real_data,label_str)
-    dataloader = DataLoader(dataset, batch_size=128, shuffle=False)
+def get_fake_data(label_dict, label_dim, real_data, label_str, generator, bins_data, sery_attrs, meta_attrs, batch_size):
+    seq_attrs = sery_attrs + meta_attrs
+    dataset = SequenceDataset(real_data,label_str,label_dict,label_dim)
+    dataloader = DataLoader(dataset, batch_size, shuffle=False)
     generated_sequences = []
     with torch.no_grad():
         for lengths, labels in dataloader:
@@ -108,15 +81,11 @@ def get_fake_data(real_data, label_str, generator):
             pkt = []
             for j,attr_id in enumerate(seq[i]): 
                 if j == 0:
-                    attr = round(random.uniform(bins_data[SEQ_LIST[j]]['intervals'][attr_id][0], bins_data[SEQ_LIST[j]]['intervals'][attr_id][1]),2) / bins_data[SEQ_LIST[j]]['intervals'][-1][1]
-                elif j < len(SERY_LIST) or i == 0:
-                    attr = round(random.uniform(bins_data[SEQ_LIST[j]]['intervals'][attr_id][0], bins_data[SEQ_LIST[j]]['intervals'][attr_id][1])) / bins_data[SEQ_LIST[j]]['intervals'][-1][1]
+                    attr = round(random.uniform(bins_data[seq_attrs[j]]['intervals'][attr_id][0], bins_data[seq_attrs[j]]['intervals'][attr_id][1]),2) / bins_data[seq_attrs[j]]['intervals'][-1][1]
+                elif j < len(sery_attrs) or i == 0:
+                    attr = round(random.uniform(bins_data[seq_attrs[j]]['intervals'][attr_id][0], bins_data[seq_attrs[j]]['intervals'][attr_id][1])) / bins_data[seq_attrs[j]]['intervals'][-1][1]
                 else:
                     attr = f_seq[0][j]
-                # elif j < len(SERY_LIST):
-                #     attr = round(random.uniform(bins_data[SEQ_LIST[j]]['intervals'][attr_id][0], bins_data[SEQ_LIST[j]]['intervals'][attr_id][1])) / bins_data[SEQ_LIST[j]]['intervals'][-1][1]
-                # else:
-                #     break
                 
                 pkt.append(attr)
             f_seq.append(pkt)
@@ -130,7 +99,14 @@ def pad(sequence, target_length, pad_value=np.nan):
         return sequence + padding  # 填充
     return sequence
 
-if __name__ == '__main__': 
+def check_models(label_dict, dataset, json_folder, bins_folder, wordvec_folder, model_folder, meta_attrs, sery_attrs, batch_size, max_seq_len, checkpoint, epochs): 
+    label_dim = len(label_dict)
+    save_folder = f'./{model_folder}/{dataset}/'
+    data_folder = f'./{json_folder}/{dataset}/'
+    bins_file_name = f'./{bins_folder}/bins_{dataset}.json'
+    wordvec_file_name = f'./{wordvec_folder}/word_vec_{dataset}.json'
+    seq_dim = len(meta_attrs) + len(sery_attrs)
+    
     with open(wordvec_file_name, 'r') as f:
         wv_dict = json.load(f)
     
@@ -144,32 +120,31 @@ if __name__ == '__main__':
     with open(bins_file_name, 'r') as f_bin:
         bins_data = json.load(f_bin)
 
-    real_datas = get_real_data(data_folder)
+    real_datas = get_real_data(data_folder,label_dict,meta_attrs,sery_attrs,bins_data,max_seq_len)
     
     best_model_id = 0
     min_ot = math.inf
 
-    for model_id in range(50,1750,50):
-        model_name = save_folder + f'generator_{model_id}.pth'
+    for model_id in range(checkpoint * 2,epochs + checkpoint,checkpoint):
+        # model_name = save_folder + f'generator_{model_id}.pth'
+        model_name = save_folder + f'generator_pre.pth'
         
-        generator = Generator(label_dim,SEQ_DIM,MAX_SEQ_LEN,x_list,'cpu')
+        generator = Generator(label_dim,seq_dim,max_seq_len,x_list,'cpu')
         checkpoint = torch.load(model_name, map_location=torch.device('cpu'))  # 加载保存的权重字典
         generator.load_state_dict(checkpoint)  # 将权重字典加载到模型中
         generator.eval()
         
         fake_datas = {}
         for label, data in real_datas.items():
-            fake_data = get_fake_data(data,label,generator)
+            fake_data = get_fake_data(label_dict,label_dim,data,label,generator,bins_data,sery_attrs,meta_attrs,batch_size)
             fake_datas[label] = fake_data
             
         ot_sum = 0
         for label in label_dict.keys():
             real_data = real_datas[label]
             fake_data = fake_datas[label]
-            real_sequences = np.array([pad(seq, MAX_SEQ_LEN) for seq in real_data])         # Shape: (num_samples, seq_len, num_dims)
-            generated_sequences = np.array([pad(seq, MAX_SEQ_LEN) for seq in fake_data]) 
-
-            num_samples, seq_len, num_dims = real_sequences.shape
+            real_sequences = np.array([pad(seq, max_seq_len) for seq in real_data])         # Shape: (num_samples, seq_len, num_dims)
+            generated_sequences = np.array([pad(seq, max_seq_len) for seq in fake_data]) 
 
             X = real_sequences
             Y = generated_sequences
@@ -191,7 +166,8 @@ if __name__ == '__main__':
             min_ot = ot_sum
             best_model_id = model_id
         
-    print(best_model_id)
+    print(f"Best model is {best_model_id}.")
+    return best_model_id
     
     
 

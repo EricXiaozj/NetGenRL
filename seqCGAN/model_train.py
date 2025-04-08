@@ -6,12 +6,12 @@ import json
 import numpy as np
 from gensim.models import Word2Vec
 from torch.utils.data import DataLoader
-from generator import Generator
-from discriminator import Discriminator
-from dataset import CustomDataset
-from util import *
-from rollout import Rollout
-from GANloss import GANLoss
+from seqCGAN.generator import Generator
+from seqCGAN.discriminator import Discriminator
+from seqCGAN.dataset import CustomDataset
+# from seqCGAN.util import *
+from seqCGAN.rollout import Rollout
+from seqCGAN.GANloss import GANLoss
 import time
 
 # def seq_to_wordvec(seqs, wv):
@@ -81,7 +81,7 @@ def compute_gradient_penalty(discriminator, real_seqs, fake_seqs, labels, length
     gradient_penalty = ((gradient_norm - 1) ** 2).mean()  # L2范数距离1的平方
     return gradient_penalty*lambda_gp
 
-def pre_train(generator, discriminator, dataloader, generator_epoch, discirminator_epoch, device):
+def pre_train(generator, discriminator, dataloader, generator_epoch, discirminator_epoch, device, model_path):
     # Pre-train generator
     # gen_criterion = F.nll_loss(reduction='none')
     gen_optimizer = optim.Adam(generator.parameters(),lr=0.0001, betas=(0.5, 0.999))
@@ -125,7 +125,7 @@ def pre_train(generator, discriminator, dataloader, generator_epoch, discirminat
             
         print('Pre-train Epoch [%d] Generator Loss: %f'% (epoch, g_loss))
         
-        torch.save(generator.state_dict(), '../save_seq/generator_pre.pth')
+        torch.save(generator.state_dict(), f'{model_path}generator_pre.pth')
         
     # dis_criterion = F.nll_loss(reduction='none')
     # dis_optimizer = optim.Adam(discriminator.parameters())
@@ -155,15 +155,6 @@ def pre_train(generator, discriminator, dataloader, generator_epoch, discirminat
             fake_validity = discriminator.forward(labels, fake_seqs_wv, lengths) * weights
             real_validity = discriminator.forward(labels, real_seqs_wv, lengths) * weights
             
-            # real_loss = F.binary_cross_entropy_with_logits(real_validity, torch.ones_like(real_validity))  # 真实数据目标是 1
-            # fake_loss = F.binary_cross_entropy_with_logits(fake_validity, torch.zeros_like(fake_validity)) 
-            
-            # zero = torch.zeros(batch_size).long().to(device)
-            # one = torch.ones(batch_size).long().to(device)
-            
-            # real_loss = dis_criterion(real_validity, one)
-            # fake_loss = dis_criterion(fake_validity, zero)
-            
             dis_optimizer.zero_grad()
             
             d_loss = -torch.mean(real_validity) + torch.mean(fake_validity)
@@ -180,13 +171,13 @@ def pre_train(generator, discriminator, dataloader, generator_epoch, discirminat
             
         print('Pre-train Epoch [%d] Discriminator Loss: %f'% (epoch, d_loss))
         
-        torch.save(discriminator.state_dict(), '../save_seq/discriminator_pre.pth')
+        torch.save(discriminator.state_dict(), f'{model_path}discriminator_pre.pth')
             
             
     
 
 # %%
-def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01, alpha = 1.0):
+def train(generator, discriminator, dataloader, epochs, device, seq_dim, n_roll, n_critic, model_path, checkpoint):
     # 使用Wasserstein GAN损失
     optimizer_g = optim.RMSprop(generator.parameters(), lr=0.00005)
     optimizer_d = optim.RMSprop(discriminator.parameters(), lr=0.00005)
@@ -196,7 +187,6 @@ def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01,
     
     rollout = Rollout(generator, 0.8)
     gan_loss = GANLoss(generator.x_list)
-    dis_criterion = nn.NLLLoss(reduction='sum')
 
     for epoch in range(epochs):
         torch.cuda.empty_cache()
@@ -228,7 +218,7 @@ def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01,
             sample_time += time.perf_counter() - start_time
             
             start_time = time.perf_counter()
-            rewards = rollout.get_reward(samples, N_ROLL, discriminator, labels, lengths)
+            rewards = rollout.get_reward(samples, n_roll, discriminator, labels, lengths)
             # rewards_exp = torch.exp(rewards.clone()).contiguous().view((-1,)).to(device)
             rewards_exp = rewards.clone().contiguous().view((-1,)).to(device)
             reward_time += time.perf_counter() - start_time
@@ -251,7 +241,7 @@ def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01,
 
             # 训练判别器
             # optimizer_md.zero_grad()
-            for _ in range(N_CRITIC):
+            for _ in range(n_critic):
                 optimizer_d.zero_grad()
                 # real_validity = discriminator(labels, seqs, lengths)
                 #noise = torch.randn(batch_size, generator.noise_dim).to(device)
@@ -310,41 +300,38 @@ def train(generator, discriminator, dataloader, epochs, device, clip_value=0.01,
         print(f"Epoch [{epoch+1}/{epochs}], D Loss: {d_loss.item()} ({d_loss_real.item()}, {d_loss_fake.item()}), G Loss: {g_loss.item()}.")
         # print(f"Epoch [{epoch+1}/{epochs}], Real: {rp}, Fake: {fp}.")
 
-        torch.save(generator.state_dict(), '../save_seq/generator.pth')
-        torch.save(discriminator.state_dict(), '../save_seq/discriminator.pth')
+        torch.save(generator.state_dict(), f'{model_path}generator.pth')
+        torch.save(discriminator.state_dict(), f'{model_path}discriminator.pth')
 
-        if (epoch + 1) % 50 == 0:
-            torch.save(generator.state_dict(), f'../save_seq/generator_{epoch+1}.pth')
-            torch.save(discriminator.state_dict(), f'../save_seq/discriminator_{epoch+1}.pth')
+        if (epoch + 1) % checkpoint == 0:
+            torch.save(generator.state_dict(), f'{model_path}generator_{epoch+1}.pth')
+            torch.save(discriminator.state_dict(), f'{model_path}discriminator_{epoch+1}.pth')
             
         torch.cuda.empty_cache()
 
 
 # %%
-# def generate_data(generator, label, noise, device):
-#     # 设置模型为评估模式
-#     generator.eval()
-
-#     # 生成图像和元数据
-#     generated_images, metadata = generator(label, noise)
+def model_train(label_dict, dataset, json_folder, bins_folder, wordvec_folder, model_folder,
+                meta_attrs, sery_attrs, 
+                model_paras):
+    label_dim = len(label_dict)
+    batch_size = model_paras['batch_size']
+    epochs = model_paras['epoch']
+    max_seq_len = model_paras['max_seq_len']
+    series_word_vec_size = model_paras['series_word_vec_size']
+    meta_word_vec_size = model_paras['meta_word_vec_size']
+    n_critic = model_paras['n_critic']
+    n_roll = model_paras['n_roll']
+    checkpoint = model_paras['checkpoint']
+    pre_trained_generator_epoch = model_paras['pre_trained_generator_epoch']
+    pre_trained_discriminator_epoch = model_paras['pre_trained_discriminator_epoch']
     
-#     return generated_images, metadata
-
-# %%
-if __name__ == '__main__':
-    label_dim = len(LABEL_DICT) 
-    # image_dim = (1, NPRINT_REAL_WIDTH, NPRINT_REAL_WIDTH)  # 生成单通道图像
-    # metadata_dim = 2  # 元数据维度为2
-    # noise_dim = 100  # 噪声维度
-    batch_size = 64
-    epochs = 1500
-    seq_dim = SEQ_DIM
-    max_seq_len = MAX_SEQ_LEN
-    # x_list = [MAX_TIME, MAX_PKT_LEN]
+    seq_dim = len(sery_attrs) + len(meta_attrs)
     
-    data_folder = '../data/' + DATASET + '/'
-    bins_file_name = '../bins/bins_' + DATASET + '.json'
-    wordvec_file_name = '../wordvec/word_vec_' + DATASET + '.json'
+    data_folder = f'./{json_folder}/{dataset}/'
+    bins_file_name = f'./{bins_folder}/bins_{dataset}.json'
+    wordvec_file_name = f'./{wordvec_folder}/word_vec_{dataset}.json'
+    model_folder_name = f'./{model_folder}/{dataset}/'
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -360,42 +347,28 @@ if __name__ == '__main__':
     print(x_list)
    
 
-    # 创建生成器、判别器和cGAN
-    # generator = Generator(label_dim, noise_dim, image_dim, metadata_dim)
-    # discriminator = Discriminator(label_dim, image_dim, metadata_dim)
-    # cgan = ConditionalGAN(generator, discriminator)
-
-    
-
-    
-    # device = "cpu"
-    
-    # cg = ConditionalGAN(label_dim,noise_dim,seq_dim,max_seq_len,device)
     generator = Generator(label_dim,seq_dim,max_seq_len,x_list,device)
-    discriminator = Discriminator(label_dim,WORD_VEC_SIZE * len(SERY_LIST) + META_VEC_SIZE * len(META_LIST) ,max_seq_len,x_list,wv,device)
+    discriminator = Discriminator(label_dim, series_word_vec_size* len(sery_attrs) + meta_word_vec_size * len(meta_attrs) ,max_seq_len,x_list,wv,device)
     
     generator.to(device)
     discriminator.to(device)
-    
-    # for wv_tensor in wv.values():
-    #     wv_tensor = wv_tensor.to(device)
 
     print(device)
 
     print("Process dataset...")
 
-    dataset = CustomDataset(data_folder = data_folder, bins_file=bins_file_name, class_mapping=LABEL_DICT,max_seq_len=max_seq_len)
+    dataset = CustomDataset(data_folder = data_folder, bins_file=bins_file_name, class_mapping=label_dict,max_seq_len=max_seq_len, meta_attrs=meta_attrs,sery_attrs=sery_attrs)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
 
-    # checkpoint_g = torch.load('../save_seq/generator.pth')  # 加载保存的权重字典
+    # checkpoint_g = torch.load(f'{model_path}generator.pth')  
     # generator.load_state_dict(checkpoint_g) 
 
-    # checkpoint_d = torch.load('../save_seq/discriminator.pth')  # 加载保存的权重字典
+    # checkpoint_d = torch.load(f'{model_path}discriminator.pth') 
     # discriminator.load_state_dict(checkpoint_d) 
     
     print("Pre-training...")
-    pre_train(generator, discriminator, dataloader, 5, 5, device)
+    pre_train(generator, discriminator, dataloader, pre_trained_generator_epoch, pre_trained_discriminator_epoch, device, model_folder_name)
 
     print("Trainning...")
-    train(generator, discriminator, dataloader, epochs, device)
+    train(generator, discriminator, dataloader, epochs, device, seq_dim, n_roll, n_critic, model_folder_name, checkpoint)

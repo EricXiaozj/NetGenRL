@@ -105,9 +105,9 @@ def chi_merge(intervals, data, chi_threshold=3.84):
     # print(chi2_vals)
     return intervals,data
 
-# %%
-def interval_allocate(intervals,data):
-    pass
+# # %%
+# def interval_allocate(intervals,data):
+#     pass
 
 # %%
 def construct_data_dic(json_data_dic, attribute_list, port_attr_list, ip_attr_list, series_attr_list, max_seq_len):
@@ -187,6 +187,7 @@ def cal_bins(data_dic, min_unit, min_value, max_value):
     
     intervals, data = construct_intervals_data(data_dic, min_value, max_value, min_unit)
     # print(intervals)
+
     # print(data.astype(int))
     new_intervals,new_data = threshold_merge(intervals,data, min_unit)
 
@@ -202,56 +203,44 @@ def cal_bins(data_dic, min_unit, min_value, max_value):
     return merged_intervals,merged_data
 
 # %%
-if __name__ == '__main__':
+def chimerge(dataset, json_folder, bins_folder, ip_attrs, port_attrs, sery_attrs, max_seq_len, params_dic):
     
-    fold_name = 'iscx'
-    # data_dic = {}
     json_data_dic = {}
-    for filename in os.listdir('../data/'+fold_name):
-        with open('../data/'+fold_name +'/'+filename, 'r') as f:
+    for filename in os.listdir(f'./{json_folder}/{dataset}'):
+        with open(f'./{json_folder}/{dataset}/{filename}', 'r') as f:
             json_data = json.load(f)
             json_data_dic[filename.split('.')[0]] = json_data
 
-    IP_ATTRIBUTE_LIST = ['src_ip','dst_ip']
-    PORT_ATTRIBUTE_LIST = ['src_port','dst_port']
-    SERY_ATTRIBUTE_LIST = ['time','pkt_len','flags','ttl']
-    ATTRIBUTE_LIST = SERY_ATTRIBUTE_LIST + PORT_ATTRIBUTE_LIST + IP_ATTRIBUTE_LIST
-    MAX_SEQ_LEN = 16
+    attr_list = sery_attrs + port_attrs + ip_attrs
+    max_seq_len = 16
 
-    data_dic = construct_data_dic(json_data_dic, ATTRIBUTE_LIST, PORT_ATTRIBUTE_LIST, IP_ATTRIBUTE_LIST, SERY_ATTRIBUTE_LIST, MAX_SEQ_LEN)
+    data_dic = construct_data_dic(json_data_dic, attr_list, port_attrs, ip_attrs, sery_attrs, max_seq_len)
 
     np.set_printoptions(linewidth=2000)
     
     result_dic = {}
-    # params_dic = {'bytes':{'min_unit':0.1,'min_value':0,'max_value':0},
-    #               'packets':{'min_unit':1,'min_value':1,'max_value':0},
-    #               'port':{'min_unit':1,'min_value':0,'max_value':65535},
-    #               'packet_len':{'min_unit':1,'min_value':-1500,'max_value':1500},
-    #               'time':{'min_unit':0.01,'min_value':0,'max_value':0}}
     
-    params_dic = {'time':{'min_unit':0.01,'min_value':0,'max_value':10000},
-                  'pkt_len':{'min_unit':1,'min_value':-1500,'max_value':1500},
-                  'flags':{'min_unit':1,'min_value':0,'max_value':255},
-                  'ttl':{'min_unit':1,'min_value':0,'max_value':255},
-                  'src_port':{'min_unit':1,'min_value':0,'max_value':65535},
-                  'dst_port':{'min_unit':1,'min_value':0,'max_value':65535},
-                  'src_ip':{'min_unit':1,'min_value':0,'max_value':4294967295},
-                  'dst_ip':{'min_unit':1,'min_value':0,'max_value':4294967295}}
+    # params_dic = {'time':{'min_unit':0.01,'min_value':0,'max_value':10000},
+    #               'pkt_len':{'min_unit':1,'min_value':-1500,'max_value':1500},
+    #               'flags':{'min_unit':1,'min_value':0,'max_value':255},
+    #               'ttl':{'min_unit':1,'min_value':0,'max_value':255},
+    #               'src_port':{'min_unit':1,'min_value':0,'max_value':65535},
+    #               'dst_port':{'min_unit':1,'min_value':0,'max_value':65535},
+    #               'src_ip':{'min_unit':1,'min_value':0,'max_value':4294967295},
+    #               'dst_ip':{'min_unit':1,'min_value':0,'max_value':4294967295}}
                   
 
     for label in params_dic.keys():
         merged_intervals,merged_data = cal_bins(data_dic[label],params_dic[label]['min_unit'],params_dic[label]['min_value'],params_dic[label]['max_value'])
-        print(label,':')
-        print(len(merged_intervals))
+        print(label,':', len(merged_intervals))
         for i in range(len(merged_intervals)):
             merged_intervals[i] = [round(merged_intervals[i][0],2),round(merged_intervals[i][1],2)]
-        print(merged_intervals)
-        print(merged_data.astype(int))
-        print()
+        # print(merged_intervals)
+        # print(merged_data.astype(int))
         result_dic[label] = {'intervals':merged_intervals,'data':merged_data.tolist()}
     
     json_str = json.dumps(result_dic)
-    with open('../bins/bins_' + fold_name + '.json', 'w') as file:
+    with open(f'./{bins_folder}/bins_{dataset}.json', 'w') as file:
         file.write(json_str)
 
     

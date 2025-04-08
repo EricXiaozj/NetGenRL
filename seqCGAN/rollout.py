@@ -2,8 +2,7 @@ import copy
 import numpy as np
 import torch
 import time
-
-from discriminator import Discriminator
+from seqCGAN.discriminator import Discriminator
 
 class Rollout(object):
     """Roll-out policy"""

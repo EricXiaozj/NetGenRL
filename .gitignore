@@ -2,10 +2,12 @@ __pycache__/
 seqCGAN/__pycache__
 bins/
 bins_old/
-data/
+data-json/
+data-pcap/
 save_*/
 wordvec/
+model/
+result/
 cuda*
 *.txt
 *.log
-*.json
